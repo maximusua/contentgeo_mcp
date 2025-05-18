@@ -1,9 +1,9 @@
 import requests
 import json
 import os
+import sys
 from typing import Dict, List, Optional
 import logging
-from mcp.server.fastmcp import FastMCP
 
 # Налаштування логування
 logging.basicConfig(
@@ -12,12 +12,89 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Створюємо модуль FastMCP локально
+class FastMCP:
+    def __init__(self, name):
+        self.name = name
+        self.tools = {}
+        self.logger = logging.getLogger(__name__)
+        self.logger.info(f"FastMCP '{name}' initialized")
+    
+    def tool(self):
+        def decorator(func):
+            self.logger.info(f"Registering tool: {func.__name__}")
+            self.tools[func.__name__] = func
+            return func
+        return decorator
+    
+    def run(self, transport='stdio'):
+        self.logger.info(f"Running FastMCP with transport '{transport}'")
+        
+        # Запускаємо простий HTTP сервер для обробки MCP запитів
+        from http.server import HTTPServer, BaseHTTPRequestHandler
+        import urllib.parse
+        
+        class MCPHTTPHandler(BaseHTTPRequestHandler):
+            def _set_headers(self, content_type='application/json'):
+                self.send_response(200)
+                self.send_header('Content-type', content_type)
+                self.end_headers()
+                
+            def _send_json_response(self, data):
+                self.wfile.write(json.dumps(data).encode())
+            
+            def do_GET(self):
+                try:
+                    logger.info(f"Received request: {self.path}")
+                    
+                    # Parse URL and parameters
+                    url_parts = urllib.parse.urlparse(self.path)
+                    path = url_parts.path.strip('/')
+                    params = dict(urllib.parse.parse_qsl(url_parts.query))
+                    
+                    # Call appropriate tool
+                    if path in self.server.mcp.tools:
+                        tool_func = self.server.mcp.tools[path]
+                        result = tool_func(**params)
+                        self._set_headers()
+                        self._send_json_response(result)
+                    else:
+                        available_tools = list(self.server.mcp.tools.keys())
+                        self.send_response(404)
+                        self.send_header('Content-type', 'application/json')
+                        self.end_headers()
+                        self._send_json_response({
+                            "error": f"Endpoint not found: {path}",
+                            "available_tools": available_tools
+                        })
+                        
+                except Exception as e:
+                    logger.error(f"Error processing request: {str(e)}")
+                    import traceback
+                    traceback.print_exc()
+                    self.send_response(500)
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    self._send_json_response({"error": str(e)})
+        
+        # Start HTTP server
+        server_address = ('', 8000)
+        httpd = HTTPServer(server_address, MCPHTTPHandler)
+        httpd.mcp = self  # Attach MCP instance to server
+        logger.info(f"Starting server on port {server_address[1]}...")
+        try:
+            httpd.serve_forever()
+        except KeyboardInterrupt:
+            logger.info("Server stopped by user request")
+        except Exception as e:
+            logger.error(f"Error starting server: {str(e)}")
+
 # Отримуємо API ключ з змінних середовища (опціонально)
 CONTENT_API_KEY = os.environ.get("CONTENT_API_KEY")
 if CONTENT_API_KEY:
-    logger.info("CONTENT_API_KEY знайдено. API запити будуть використовувати ключ.")
+    logger.info(f"CONTENT_API_KEY found: {CONTENT_API_KEY[:4]}***. API requests will use the key.")
 else:
-    logger.info("CONTENT_API_KEY не знайдено. API запити будуть працювати без ключа.")
+    logger.info("CONTENT_API_KEY not found. API requests will work without a key.")
 
 # Ініціалізація FastMCP сервера
 mcp = FastMCP("contentgeo")
@@ -55,21 +132,21 @@ def health_check() -> Dict:
         }
 
 @mcp.tool()
-def landmarkinfo(id: str) -> Dict:
+def landmarkinfo(ids="") -> Dict:
     """
     Отримання інформації про визначну пам'ятку за її ID.
     
     Args:
-        id: ID пам'ятки
+        ids: ID пам'ятки
         
     Returns:
         Словник з інформацією про визначну пам'ятку
     """
     try:
-        if not id:
+        if not ids:
             raise ValueError("Не вказано ID пам'ятки")
             
-        url = f"https://api.contentgeo.info/?page=landmarkinfo&id={id}"
+        url = f"https://api.contentgeo.info/?page=landmarkinfo&ids={ids}"
         if CONTENT_API_KEY:
             url += f"&api_key={CONTENT_API_KEY}"
             
@@ -83,11 +160,11 @@ def landmarkinfo(id: str) -> Dict:
         logger.error(f"Помилка при отриманні інформації про пам'ятку: {str(e)}")
         return {
             "error": str(e),
-            "id": id
+            "ids": ids
         }
 
 @mcp.tool()
-def landmarks(lat: float, lon: float) -> Dict:
+def landmarks(lat=0, lon=0) -> Dict:
     """
     Отримання списку визначних пам'яток поблизу вказаних координат.
     
@@ -99,6 +176,9 @@ def landmarks(lat: float, lon: float) -> Dict:
         Словник зі списком визначних пам'яток
     """
     try:
+        lat = float(lat)
+        lon = float(lon)
+        
         if not lat or not lon:
             raise ValueError("Не вказано координати")
             
@@ -121,7 +201,7 @@ def landmarks(lat: float, lon: float) -> Dict:
         }
 
 @mcp.tool()
-def get_restaurants(lat: float, lon: float) -> Dict:
+def restaurants(lat=0, lon=0) -> Dict:
     """
     Отримання списку ресторанів поблизу вказаних координат.
     
@@ -133,6 +213,9 @@ def get_restaurants(lat: float, lon: float) -> Dict:
         Словник зі списком ресторанів
     """
     try:
+        lat = float(lat)
+        lon = float(lon)
+        
         if not lat or not lon:
             raise ValueError("Не вказано координати")
             
@@ -155,7 +238,7 @@ def get_restaurants(lat: float, lon: float) -> Dict:
         }
 
 @mcp.tool()
-def get_restaurant_info(ids: str) -> Dict:
+def restaurantinfo(ids="") -> Dict:
     """
     Отримання детальної інформації про ресторан за його ID.
     
@@ -187,7 +270,7 @@ def get_restaurant_info(ids: str) -> Dict:
         }
 
 @mcp.tool()
-def get_geo_objects(lat: float, lon: float, distance: Optional[float] = None) -> Dict:
+def geo_objects(lat=0, lon=0, distance=None) -> Dict:
     """
     Отримання геооб'єктів поблизу вказаних координат.
     
@@ -200,6 +283,10 @@ def get_geo_objects(lat: float, lon: float, distance: Optional[float] = None) ->
         Словник зі списком геооб'єктів
     """
     try:
+        lat = float(lat)
+        lon = float(lon)
+        distance = float(distance) if distance is not None else None
+        
         if not lat or not lon:
             raise ValueError("Не вказано координати")
             
@@ -224,7 +311,7 @@ def get_geo_objects(lat: float, lon: float, distance: Optional[float] = None) ->
         }
 
 @mcp.tool()
-def get_geo_object_info(ids: str) -> Dict:
+def geo_object_info(ids="") -> Dict:
     """
     Отримання детальної інформації про геооб'єкт за його ID.
     

@@ -1,5 +1,6 @@
 import requests
 import json
+import os
 from typing import Dict, List, Optional
 import logging
 from mcp.server.fastmcp import FastMCP
@@ -10,6 +11,13 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+# Отримуємо API ключ з змінних середовища (опціонально)
+CONTENT_API_KEY = os.environ.get("CONTENT_API_KEY")
+if CONTENT_API_KEY:
+    logger.info("CONTENT_API_KEY знайдено. API запити будуть використовувати ключ.")
+else:
+    logger.info("CONTENT_API_KEY не знайдено. API запити будуть працювати без ключа.")
 
 # Ініціалізація FastMCP сервера
 mcp = FastMCP("contentgeo")
@@ -24,20 +32,26 @@ def health_check() -> Dict:
     """
     try:
         # Перевіряємо доступність API ContentGeo
-        response = requests.get("https://api.contentgeo.info/?page=landmarks&lat=50.4113658&lon=30.5113545")
+        url = "https://api.contentgeo.info/?page=landmarks&lat=50.4113658&lon=30.5113545"
+        if CONTENT_API_KEY:
+            url += f"&api_key={CONTENT_API_KEY}"
+            
+        response = requests.get(url)
         response.raise_for_status()
         
         return {
             'status': 'healthy',
             'api_status': 'available',
-            'message': 'Сервер працює нормально'
+            'message': 'Сервер працює нормально',
+            'api_key_present': bool(CONTENT_API_KEY)
         }
     except Exception as e:
         logger.error(f"Помилка при перевірці стану: {str(e)}")
         return {
             'status': 'unhealthy',
             'api_status': 'unavailable',
-            'message': str(e)
+            'message': str(e),
+            'api_key_present': bool(CONTENT_API_KEY)
         }
 
 @mcp.tool()
@@ -56,6 +70,9 @@ def landmarkinfo(id: str) -> Dict:
             raise ValueError("Не вказано ID пам'ятки")
             
         url = f"https://api.contentgeo.info/?page=landmarkinfo&id={id}"
+        if CONTENT_API_KEY:
+            url += f"&api_key={CONTENT_API_KEY}"
+            
         logger.info(f"Запит до ContentGeo API: {url}")
         
         response = requests.get(url)
@@ -64,7 +81,10 @@ def landmarkinfo(id: str) -> Dict:
         
     except Exception as e:
         logger.error(f"Помилка при отриманні інформації про пам'ятку: {str(e)}")
-        raise
+        return {
+            "error": str(e),
+            "id": id
+        }
 
 @mcp.tool()
 def landmarks(lat: float, lon: float) -> Dict:
@@ -83,6 +103,9 @@ def landmarks(lat: float, lon: float) -> Dict:
             raise ValueError("Не вказано координати")
             
         url = f"https://api.contentgeo.info/?page=landmarks&lat={lat}&lon={lon}"
+        if CONTENT_API_KEY:
+            url += f"&api_key={CONTENT_API_KEY}"
+            
         logger.info(f"Запит до ContentGeo API: {url}")
         
         response = requests.get(url)
@@ -91,7 +114,11 @@ def landmarks(lat: float, lon: float) -> Dict:
         
     except Exception as e:
         logger.error(f"Помилка при отриманні списку пам'яток: {str(e)}")
-        raise
+        return {
+            "error": str(e),
+            "features": [],
+            "coordinates": {"lat": lat, "lon": lon}
+        }
 
 @mcp.tool()
 def get_restaurants(lat: float, lon: float) -> Dict:
@@ -110,6 +137,9 @@ def get_restaurants(lat: float, lon: float) -> Dict:
             raise ValueError("Не вказано координати")
             
         url = f"https://api.contentgeo.info/?page=restaurants&lat={lat}&lon={lon}"
+        if CONTENT_API_KEY:
+            url += f"&api_key={CONTENT_API_KEY}"
+            
         logger.info(f"Запит до ContentGeo API: {url}")
         
         response = requests.get(url)
@@ -118,7 +148,11 @@ def get_restaurants(lat: float, lon: float) -> Dict:
         
     except Exception as e:
         logger.error(f"Помилка при отриманні списку ресторанів: {str(e)}")
-        raise
+        return {
+            "error": str(e),
+            "features": [],
+            "coordinates": {"lat": lat, "lon": lon}
+        }
 
 @mcp.tool()
 def get_restaurant_info(ids: str) -> Dict:
@@ -136,6 +170,9 @@ def get_restaurant_info(ids: str) -> Dict:
             raise ValueError("Не вказано ID ресторану")
             
         url = f"https://api.contentgeo.info/?page=restaurantinfo&ids={ids}"
+        if CONTENT_API_KEY:
+            url += f"&api_key={CONTENT_API_KEY}"
+            
         logger.info(f"Запит до ContentGeo API: {url}")
         
         response = requests.get(url)
@@ -144,7 +181,10 @@ def get_restaurant_info(ids: str) -> Dict:
         
     except Exception as e:
         logger.error(f"Помилка при отриманні інформації про ресторан: {str(e)}")
-        raise
+        return {
+            "error": str(e),
+            "ids": ids
+        }
 
 @mcp.tool()
 def get_geo_objects(lat: float, lon: float, distance: Optional[float] = None) -> Dict:
@@ -166,6 +206,8 @@ def get_geo_objects(lat: float, lon: float, distance: Optional[float] = None) ->
         url = f"https://api.contentgeo.info/?page=geo_objects&lat={lat}&lon={lon}"
         if distance:
             url += f"&distance={distance}"
+        if CONTENT_API_KEY:
+            url += f"&api_key={CONTENT_API_KEY}"
             
         logger.info(f"Запит до ContentGeo API: {url}")
         
@@ -175,7 +217,11 @@ def get_geo_objects(lat: float, lon: float, distance: Optional[float] = None) ->
         
     except Exception as e:
         logger.error(f"Помилка при отриманні геооб'єктів: {str(e)}")
-        raise
+        return {
+            "error": str(e),
+            "features": [],
+            "coordinates": {"lat": lat, "lon": lon, "distance": distance}
+        }
 
 @mcp.tool()
 def get_geo_object_info(ids: str) -> Dict:
@@ -193,6 +239,9 @@ def get_geo_object_info(ids: str) -> Dict:
             raise ValueError("Не вказано ID геооб'єкту")
             
         url = f"https://api.contentgeo.info/?page=geo_object_info&ids={ids}"
+        if CONTENT_API_KEY:
+            url += f"&api_key={CONTENT_API_KEY}"
+            
         logger.info(f"Запит до ContentGeo API: {url}")
         
         response = requests.get(url)
@@ -201,8 +250,12 @@ def get_geo_object_info(ids: str) -> Dict:
         
     except Exception as e:
         logger.error(f"Помилка при отриманні інформації про геооб'єкт: {str(e)}")
-        raise
+        return {
+            "error": str(e),
+            "ids": ids
+        }
 
 if __name__ == "__main__":
     # Ініціалізація та запуск сервера
+    logger.info("Запуск FastMCP сервера...")
     mcp.run(transport='stdio') 

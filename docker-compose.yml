@@ -1,0 +1,13 @@
+version: '3'
+
+services:
+  contentgeo-mcp:
+    container_name: contentgeo-mcp
+    build:
+      context: .
+      dockerfile: Dockerfile.mcp
+    ports:
+      - "8001:8000"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - CONTENT_API_KEY=${CONTENT_API_KEY} 

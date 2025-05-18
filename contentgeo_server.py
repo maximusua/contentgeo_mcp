@@ -1,13 +1,45 @@
 import requests
 import json
 from typing import Dict, List, Optional
-from mcp_server import MCPServer
+from http.server import HTTPServer, BaseHTTPRequestHandler
+import urllib.parse
 
-class ContentGeoServer(MCPServer):
-    def __init__(self):
-        super().__init__()
+class ContentGeoServer(BaseHTTPRequestHandler):
+    def __init__(self, *args, **kwargs):
         self.base_url = "https://api.contentgeo.info"
+        super().__init__(*args, **kwargs)
         
+    def do_GET(self):
+        """Обробка GET запитів"""
+        try:
+            # Парсимо URL та параметри
+            parsed_path = urllib.parse.urlparse(self.path)
+            path = parsed_path.path.strip('/')
+            params = dict(urllib.parse.parse_qsl(parsed_path.query))
+            
+            # Обробляємо різні ендпоінти
+            if path == 'landmarkinfo':
+                response = self.landmarkinfo(params.get('ids', ''))
+            elif path == 'landmarks':
+                response = self.landmarks(
+                    float(params.get('lat', 0)),
+                    float(params.get('lon', 0))
+                )
+            else:
+                response = {"error": f"Невідомий ендпоінт: {path}"}
+            
+            # Відправляємо відповідь
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps(response).encode())
+            
+        except Exception as e:
+            self.send_response(500)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": str(e)}).encode())
+    
     def landmarkinfo(self, ids: str) -> Dict:
         """
         Отримання інформації про визначну пам'ятку за її ID.
@@ -43,6 +75,12 @@ class ContentGeoServer(MCPServer):
         except Exception as e:
             return {"error": str(e)}
 
+def run_server(port: int = 8000):
+    """Запуск сервера"""
+    server_address = ('', port)
+    httpd = HTTPServer(server_address, ContentGeoServer)
+    print(f"Запуск сервера на порту {port}...")
+    httpd.serve_forever()
+
 if __name__ == "__main__":
-    server = ContentGeoServer()
-    server.run() 
+    run_server() 

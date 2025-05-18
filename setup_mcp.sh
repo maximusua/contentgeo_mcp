@@ -6,20 +6,24 @@ python3 -m venv /venv
 export PATH="/venv/bin:$PATH"
 
 echo "Налаштовуємо Python середовище..."
+# Знаходимо шлях до site-packages
+SITE_PACKAGES=$(python3 -c "import site; print(site.getsitepackages()[0])")
+echo "Site packages: $SITE_PACKAGES"
+
 # Створюємо структуру для MCP модуля
-mkdir -p /venv/lib/python3.*/site-packages/mcp
-mkdir -p /venv/lib/python3.*/site-packages/mcp/server
+mkdir -p "$SITE_PACKAGES/mcp"
+mkdir -p "$SITE_PACKAGES/mcp/server"
 
 # Створюємо базові файли для MCP модуля
-cat > /venv/lib/python3.*/site-packages/mcp/__init__.py << EOF
+cat > "$SITE_PACKAGES/mcp/__init__.py" << EOF
 # Пустий файл ініціалізації
 EOF
 
-cat > /venv/lib/python3.*/site-packages/mcp/server/__init__.py << EOF
+cat > "$SITE_PACKAGES/mcp/server/__init__.py" << EOF
 # Пустий файл ініціалізації
 EOF
 
-cat > /venv/lib/python3.*/site-packages/mcp/server/fastmcp.py << EOF
+cat > "$SITE_PACKAGES/mcp/server/fastmcp.py" << EOF
 import logging
 
 class FastMCP:
@@ -44,8 +48,20 @@ class FastMCP:
         pass
 EOF
 
-# Налаштовуємо змінні середовища
-export PATH="/root/.cargo/bin:$PATH"
+# Для тестування, переконуємося, що модуль доступний
+python3 -c "import sys; print(sys.path); import mcp.server.fastmcp; print('MCP модуль доступний!')" || {
+    echo "Помилка імпорту MCP модуля. Спробуємо вилікувати..."
+    export PYTHONPATH="$SITE_PACKAGES:$PYTHONPATH"
+    python3 -c "import mcp.server.fastmcp; print('Тепер MCP модуль доступний!')" || {
+        echo "Не вдалося виправити помилку імпорту. Вносимо додаткові зміни..."
+        # Для contentgeo_server.py - створимо локальний mcp модуль
+        mkdir -p mcp/server
+        cp "$SITE_PACKAGES/mcp/__init__.py" mcp/
+        cp "$SITE_PACKAGES/mcp/server/__init__.py" mcp/server/
+        cp "$SITE_PACKAGES/mcp/server/fastmcp.py" mcp/server/
+        echo "Створено локальний mcp модуль в поточній директорії."
+    }
+}
 
 # Вивід інформації про API ключі
 if [ -n "$CONTENT_API_KEY" ]; then
@@ -54,8 +70,15 @@ else
     echo "CONTENT_API_KEY не знайдено. API запити будуть працювати без ключа."
 fi
 
-echo "Встановлюємо Python залежності через uv..."
-uv pip install -r requirements.txt
+# Встановлюємо uv
+echo "Встановлюємо uv..."
+curl -sSf https://astral.sh/uv/install.sh | sh
+export PATH="/root/.cargo/bin:$PATH"
+echo "Шлях до uv: $(which uv || echo 'uv не знайдено')"
+
+# Встановлюємо Python залежності
+echo "Встановлюємо Python залежності..."
+pip install --no-cache-dir -r requirements.txt
 
 echo "Запускаємо сервер..."
 python3 contentgeo_server.py 

@@ -4,6 +4,8 @@ from typing import Dict, List, Optional
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import urllib.parse
 import logging
+import socket
+import sys
 from urllib.parse import urlparse, parse_qs
 
 # Налаштування логування
@@ -27,7 +29,9 @@ class ContentGeoServer(BaseHTTPRequestHandler):
             
             logger.info(f"Отримано запит: {self.path}")
             
-            if path == 'landmarkinfo':
+            if path == 'health':
+                response = self.health_check()
+            elif path == 'landmarkinfo':
                 response = self.landmarkinfo(query_params)
             elif path == 'landmarks':
                 response = self.landmarks(query_params)
@@ -52,6 +56,31 @@ class ContentGeoServer(BaseHTTPRequestHandler):
         except Exception as e:
             logger.error(f"Помилка при обробці запиту: {str(e)}")
             self.send_error(500, str(e))
+    
+    def health_check(self):
+        """
+        Перевірка стану сервера.
+        
+        Returns:
+            Словник з інформацією про стан сервера
+        """
+        try:
+            # Перевіряємо доступність API ContentGeo
+            response = requests.get(f"{self.base_url}/?page=landmarks&lat=50.4113658&lon=30.5113545")
+            response.raise_for_status()
+            
+            return {
+                'status': 'healthy',
+                'api_status': 'available',
+                'message': 'Сервер працює нормально'
+            }
+        except Exception as e:
+            logger.error(f"Помилка при перевірці стану: {str(e)}")
+            return {
+                'status': 'unhealthy',
+                'api_status': 'unavailable',
+                'message': str(e)
+            }
     
     def landmarkinfo(self, params):
         """
@@ -219,12 +248,50 @@ class ContentGeoServer(BaseHTTPRequestHandler):
             logger.error(f"Помилка при отриманні інформації про геооб'єкт: {str(e)}")
             raise
 
-def run_server(port: int = 8000):
-    """Запуск сервера"""
-    server_address = ('', port)
-    httpd = HTTPServer(server_address, ContentGeoServer)
-    logger.info(f"Сервер запущено на порту {port}")
-    httpd.serve_forever()
+def find_available_port(start_port=8000, max_port=8999):
+    """
+    Пошук доступного порту в діапазоні.
+    
+    Args:
+        start_port: Початковий порт для пошуку
+        max_port: Максимальний порт для пошуку
+        
+    Returns:
+        Доступний порт або None, якщо портів немає
+    """
+    for port in range(start_port, max_port + 1):
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.bind(('', port))
+                return port
+        except OSError:
+            continue
+    return None
+
+def run_server(port=None):
+    """
+    Запуск сервера.
+    
+    Args:
+        port: Порт для запуску сервера. Якщо None, буде вибрано перший доступний порт.
+    """
+    if port is None:
+        port = find_available_port()
+        if port is None:
+            logger.error("Не знайдено доступних портів")
+            sys.exit(1)
+    
+    try:
+        server_address = ('', port)
+        httpd = HTTPServer(server_address, ContentGeoServer)
+        logger.info(f"Сервер запущено на порту {port}")
+        httpd.serve_forever()
+    except OSError as e:
+        if e.errno == 48:  # Address already in use
+            logger.error(f"Порт {port} вже використовується. Спробуйте інший порт.")
+            sys.exit(1)
+        else:
+            raise
 
 if __name__ == "__main__":
     run_server() 

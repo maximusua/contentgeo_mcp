@@ -311,18 +311,31 @@ app.add_middleware(
 async def root():
     return {"status": "ok", "message": "ContentGeo MCP Server is running"}
 
-# Add FastMCP as a sub-application
-# This exposes the MCP server at /mcp
-from fastmcp.asgi import mcp_app
-app.mount("/mcp", mcp_app(mcp))
-
 # Add an endpoint to list available tools
 @app.get("/tools")
 async def list_tools():
-    return {"tools": list(mcp.tools.keys())}
+    tools = []
+    for name, tool in mcp.tools.items():
+        tools.append({
+            "name": name,
+            "description": tool.description if hasattr(tool, "description") else "",
+            "parameters": list(tool.parameters.keys()) if hasattr(tool, "parameters") else []
+        })
+    return {"tools": tools}
+
+# Add an endpoint for FastMCP client connection information
+@app.get("/client-info")
+async def client_info():
+    return {
+        "name": mcp.name,
+        "version": "0.2.0",
+        "description": "ContentGeo MCP Server",
+        "usage": "To use this server, configure your FastMCP client to connect to this server using stdio transport."
+    }
 
 if __name__ == "__main__":
+    # Start FastAPI server for HTTP access
     import uvicorn
     HOST = os.environ.get("MCP_HOST", "0.0.0.0")
-    logger.info(f"Starting server on {HOST}:{PORT}...")
+    logger.info(f"Starting FastAPI server on {HOST}:{PORT}...")
     uvicorn.run(app, host=HOST, port=PORT) 

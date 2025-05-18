@@ -2,6 +2,7 @@ import requests
 import json
 import os
 import sys
+import inspect
 from typing import Dict, List, Optional, Any, Union
 import logging
 from fastmcp import FastMCP
@@ -311,24 +312,14 @@ app.add_middleware(
 async def root():
     return {"status": "ok", "message": "ContentGeo MCP Server is running"}
 
-# Add an endpoint to list available tools
-@app.get("/tools")
-async def list_tools():
-    tools = []
-    for name, tool in mcp.tools.items():
-        tools.append({
-            "name": name,
-            "description": tool.description if hasattr(tool, "description") else "",
-            "parameters": list(tool.parameters.keys()) if hasattr(tool, "parameters") else []
-        })
-    return {"tools": tools}
-
 # Add an endpoint for FastMCP client connection information
 @app.get("/client-info")
 async def client_info():
+    import fastmcp
+    
     return {
         "name": mcp.name,
-        "version": "0.2.0",
+        "version": fastmcp.__version__,
         "description": "ContentGeo MCP Server",
         "usage": "To use this server, configure your FastMCP client to connect to this server using stdio transport."
     }

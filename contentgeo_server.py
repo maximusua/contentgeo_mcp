@@ -290,10 +290,11 @@ def location_search(query: str = "") -> Dict:
             "results": []
         }
 
-# Create a WSGI app for the server
+# Create a FastAPI app for the server
 from fastapi import FastAPI
 from starlette.middleware.cors import CORSMiddleware
 
+# Create the main FastAPI app
 app = FastAPI(title="ContentGeo MCP Server")
 
 # Add CORS middleware
@@ -310,11 +311,15 @@ app.add_middleware(
 async def root():
     return {"status": "ok", "message": "ContentGeo MCP Server is running"}
 
-# Create an MCP endpoint
-@app.get("/mcp")
-@app.post("/mcp")
-async def mcp_endpoint():
-    return {"status": "ok", "message": "This is the MCP endpoint"}
+# Add FastMCP as a sub-application
+# This exposes the MCP server at /mcp
+from fastmcp.asgi import mcp_app
+app.mount("/mcp", mcp_app(mcp))
+
+# Add an endpoint to list available tools
+@app.get("/tools")
+async def list_tools():
+    return {"tools": list(mcp.tools.keys())}
 
 if __name__ == "__main__":
     import uvicorn

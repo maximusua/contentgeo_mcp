@@ -1,12 +1,23 @@
-FROM python:3.9-slim
+FROM node:18
 
 WORKDIR /app
+
+# Встановлюємо залежності Node.js
+RUN npm install -g @modelcontextprotocol/inspector
+
+# Встановлюємо Python і створюємо віртуальне середовище
+RUN apt-get update && apt-get install -y python3 python3-pip python3-venv
+RUN python3 -m venv /venv
+ENV PATH="/venv/bin:$PATH"
 
 # Копіюємо файли проекту
 COPY . .
 
-# Встановлюємо залежності
+# Встановлюємо Python залежності
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Запускаємо сервер
-CMD ["python", "contentgeo_server.py"]
+# Робимо скрипт виконуваним
+RUN chmod +x setup_mcp.sh
+
+# Запускаємо скрипт, який встановлює MCP та запускає сервер
+CMD ["./setup_mcp.sh"]

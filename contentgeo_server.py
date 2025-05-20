@@ -291,42 +291,7 @@ def location_search(query: str = "") -> Dict:
             "results": []
         }
 
-# Create a FastAPI app for the server
-from fastapi import FastAPI
-from starlette.middleware.cors import CORSMiddleware
-
-# Create the main FastAPI app
-app = FastAPI(title="ContentGeo MCP Server")
-
-# Add CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Add a simple status endpoint
-@app.get("/")
-async def root():
-    return {"status": "ok", "message": "ContentGeo MCP Server is running"}
-
-# Add an endpoint for FastMCP client connection information
-@app.get("/client-info")
-async def client_info():
-    import fastmcp
-    
-    return {
-        "name": mcp.name,
-        "version": fastmcp.__version__,
-        "description": "ContentGeo MCP Server",
-        "usage": "To use this server, configure your FastMCP client to connect to this server using stdio transport."
-    }
-
 if __name__ == "__main__":
-    # Start FastAPI server for HTTP access
-    import uvicorn
-    HOST = os.environ.get("MCP_HOST", "0.0.0.0")
-    logger.info(f"Starting FastAPI server on {HOST}:{PORT}...")
-    uvicorn.run(app, host=HOST, port=PORT) 
+    # Start FastMCP server
+    logger.info(f"Starting ContentGeo MCP Server on port {PORT}...")
+    mcp.run() 
